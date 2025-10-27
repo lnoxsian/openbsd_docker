@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  openbsd-vm:
+    build: .
+    image: openbsd-qemu-novnc
+    container_name: openbsd-vm
+    # If host supports KVM, give container access. Remove if not available.
+    devices:
+      - /dev/kvm:/dev/kvm
+    cap_add:
+      - SYS_ADMIN
+    ports:
+      - "6080:6080"   # noVNC web UI
+      - "2222:2222"   # guest SSH forwarded to host:2222
+      - "5901:5901"   # optional: direct VNC access (QEMU listens on 5901 if VNC_DISPLAY=1)
+    volumes:
+      - ./images:/images
+    environment:
+      # BOOT_MODE: "install" to boot the ISO, "disk" to boot the disk image
+      BOOT_MODE: "disk"
+      # When using BOOT_MODE=install, set QEMU_ISO to the ISO path inside container (default /images/openbsd-install.iso)
+      QEMU_ISO: "/images/openbsd-install.iso"
+      QEMU_IMG: "/images/openbsd.img"
+      QEMU_IMG_SIZE: "10G"
+      QEMU_MEM: "2048"
+      VNC_DISPLAY: "1"
+      NOVNC_PORT: "6080"
+      EXTRA_QEMU_ARGS: ""
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
