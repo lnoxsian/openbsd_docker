@@ -1,6 +1,6 @@
 FROM debian:bookworm-slim
 
-# Install required packages including qemu-system-aarch64 and websockify (distro package)
+# Install required packages including qemu-system-aarch64, websockify and wget
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     qemu-system-aarch64 \
@@ -11,6 +11,13 @@ RUN apt-get update \
     git \
     ca-certificates \
  && git clone https://github.com/novnc/noVNC /opt/novnc \
+ \
+ # Ensure a place for QEMU ROMs and attempt to install the efi-virtio ROM used by some virtio devices
+ && mkdir -p /usr/share/qemu /usr/share/qemu/pc-bios \
+ && wget -O /usr/share/qemu/efi-virtio.rom "https://gitlab.com/qemu-project/qemu/-/raw/master/pc-bios/efi-virtio.rom" \
+ && cp /usr/share/qemu/efi-virtio.rom /usr/share/qemu/pc-bios/efi-virtio.rom \
+ && chmod 644 /usr/share/qemu/efi-virtio.rom /usr/share/qemu/pc-bios/efi-virtio.rom \
+ \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
