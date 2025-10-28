@@ -1,5 +1,5 @@
 services:
-  openbsd-arm64:
+  openbsd-vm:
     build:
     image: openbsd-qemu-novnc
     container_name: openbsd-vm
