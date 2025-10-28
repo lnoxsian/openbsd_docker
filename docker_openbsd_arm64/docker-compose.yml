@@ -1,6 +1,6 @@
 services:
   openbsd-vm:
-    build:
+    build: .
     image: openbsd-qemu-novnc
     container_name: openbsd-vm
     # Give container access to host KVM device (remove if not available)
