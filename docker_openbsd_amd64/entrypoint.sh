@@ -13,7 +13,7 @@ VNC_PORT=$((5900 + VNC_DISPLAY))
 EXTRA_QEMU_ARGS=${EXTRA_QEMU_ARGS:-} # Extra qemu args you may want to pass
 
 # log to stderr so helper functions can emit only machine-parsable stdout (path)
-log() { echo "entrypoint: $*" >&2; }
+log() { echo "entrypoint-amd64: $*" >&2; }
 
 # Helper: download a URL into /images and print the local path to STDOUT only
 download_to_images() {
