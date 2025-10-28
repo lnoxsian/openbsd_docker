@@ -23,10 +23,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy the ARM64-specific entrypoint (expected to exist in build context)
-COPY entrypoint-arm64.sh /usr/local/bin/entrypoint-arm64.sh
-RUN chmod +x /usr/local/bin/entrypoint-arm64.sh
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 VOLUME ["/images"]
 EXPOSE 6080 5901 2222
 
-ENTRYPOINT ["/usr/local/bin/entrypoint-arm64.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
