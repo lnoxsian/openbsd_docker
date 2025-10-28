@@ -22,16 +22,19 @@ download_to_images() {
   mkdir -p "$dest_dir"
   local fname
   fname=$(basename "$url")
-  # If URL ends in query string or contains characters, normalize filename
-  # strip query params if any
+  # Strip query params if any
   fname="${fname%%\?*}"
+  # If filename is empty (ends with /) create a sane name
+  if [ -z "$fname" ] || [ "$fname" = "/" ]; then
+    fname="downloaded-file-$(date +%s)"
+  fi
   local dest="$dest_dir/$fname"
 
   if [ -f "$dest" ]; then
     log "File already exists at $dest — skipping download."
   else
     log "Downloading $url -> $dest"
-    # Use wget and send its output to stderr so this function's stdout remains only the path
+    # Use wget and send its normal output to stderr so this function's stdout remains only the path
     # --tries=3 for a few retries, --timeout=30 for network timeout
     wget --tries=3 --timeout=30 -O "$dest" "$url" 1>&2 || { log "ERROR: download failed: $url" >&2; return 1; }
   fi
@@ -44,19 +47,30 @@ download_to_images() {
 mkdir -p "$(dirname "$QEMU_IMG")"
 mkdir -p /images
 
-# If QEMU_ISO is a URL, download it into /images and update the var to the downloaded local path.
+# Keep original values for reference (if they were URLs)
+ORIGINAL_QEMU_ISO="${QEMU_ISO}"
+ORIGINAL_QEMU_IMG="${QEMU_IMG}"
+
+# If QEMU_ISO is a URL, download it into /images and set a separate local path var,
+# then update QEMU_ISO to point to that local path (so later code uses the local file).
 if [[ "${QEMU_ISO}" =~ ^https?:// ]]; then
-  downloaded_iso=$(download_to_images "$QEMU_ISO") || { log "Failed to download ISO $QEMU_ISO"; exit 1; }
-  # downloaded_iso is a clean local path (printed by download_to_images)
-  QEMU_ISO="$downloaded_iso"
-  log "Using downloaded ISO: $QEMU_ISO"
+  log "QEMU_ISO is a URL: ${QEMU_ISO} (will download to /images)"
+  QEMU_ISO_LOCAL=$(download_to_images "$QEMU_ISO") || { log "Failed to download ISO $QEMU_ISO"; exit 1; }
+  log "Downloaded ISO path: ${QEMU_ISO_LOCAL}"
+  # Update QEMU_ISO to the local path for later use by QEMU
+  QEMU_ISO="${QEMU_ISO_LOCAL}"
+  export QEMU_ISO
+  log "QEMU_ISO updated to local file: ${QEMU_ISO}"
 fi
 
-# If QEMU_IMG is a URL, download it into /images and update the var to the downloaded local path.
+# If QEMU_IMG is a URL, download it into /images and update QEMU_IMG to the local path
 if [[ "${QEMU_IMG}" =~ ^https?:// ]]; then
-  downloaded_img=$(download_to_images "$QEMU_IMG") || { log "Failed to download disk image $QEMU_IMG"; exit 1; }
-  QEMU_IMG="$downloaded_img"
-  log "Using downloaded disk image: $QEMU_IMG"
+  log "QEMU_IMG is a URL: ${QEMU_IMG} (will download to /images)"
+  QEMU_IMG_LOCAL=$(download_to_images "$QEMU_IMG") || { log "Failed to download disk image $QEMU_IMG"; exit 1; }
+  log "Downloaded disk image path: ${QEMU_IMG_LOCAL}"
+  QEMU_IMG="${QEMU_IMG_LOCAL}"
+  export QEMU_IMG
+  log "QEMU_IMG updated to local file: ${QEMU_IMG}"
 fi
 
 # Create disk image if missing (only for disk image path that's not a downloaded file)
@@ -72,7 +86,7 @@ if [ "$BOOT_MODE" = "install" ]; then
     log "Place your OpenBSD installer ISO at $QEMU_ISO or change QEMU_ISO env var (or set QEMU_ISO to a URL)."
     exit 1
   fi
-  # Pass the downloaded (or local) ISO path to QEMU via -cdrom
+  # Use the (possibly downloaded) local ISO path
   BOOT_ARGS=(-cdrom "$QEMU_ISO" -boot d)
   log "Starting in install mode: booting ISO $QEMU_ISO"
 else
