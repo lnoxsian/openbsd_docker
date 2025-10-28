@@ -14,10 +14,52 @@ EXTRA_QEMU_ARGS=${EXTRA_QEMU_ARGS:-} # Extra qemu args you may want to pass
 
 log() { echo "entrypoint: $*"; }
 
+# Helper: download a URL into /images and print the local path
+download_to_images() {
+  local url="$1"
+  local dest_dir="/images"
+  mkdir -p "$dest_dir"
+  local fname
+  fname=$(basename "$url")
+  local dest="$dest_dir/$fname"
+
+  if [ -f "$dest" ]; then
+    log "File already exists at $dest — skipping download."
+  else
+    log "Downloading $url -> $dest"
+    # wget is installed in the image; fail loudly if download fails
+    wget -O "$dest" "$url" || { log "ERROR: download failed: $url"; return 1; }
+  fi
+
+  printf '%s' "$dest"
+}
+
 # Ensure images dir exists (volume may provide it)
 mkdir -p "$(dirname "$QEMU_IMG")"
+mkdir -p /images
 
-# Create disk image if missing
+# If QEMU_ISO or QEMU_IMG are URLs, download them into /images and update the vars.
+if [[ "${QEMU_ISO}" =~ ^https?:// ]]; then
+  downloaded_iso=$(download_to_images "$QEMU_ISO")
+  if [ $? -ne 0 ]; then
+    log "Failed to download ISO $QEMU_ISO"
+    exit 1
+  fi
+  QEMU_ISO="$downloaded_iso"
+  log "Using downloaded ISO: $QEMU_ISO"
+fi
+
+if [[ "${QEMU_IMG}" =~ ^https?:// ]]; then
+  downloaded_img=$(download_to_images "$QEMU_IMG")
+  if [ $? -ne 0 ]; then
+    log "Failed to download disk image $QEMU_IMG"
+    exit 1
+  fi
+  QEMU_IMG="$downloaded_img"
+  log "Using downloaded disk image: $QEMU_IMG"
+fi
+
+# Create disk image if missing (only for disk image path that's not a downloaded file)
 if [ ! -f "$QEMU_IMG" ]; then
   log "No disk at $QEMU_IMG — creating a ${QEMU_IMG_SIZE} qcow2 placeholder."
   qemu-img create -f qcow2 "$QEMU_IMG" "$QEMU_IMG_SIZE"
@@ -27,7 +69,7 @@ fi
 if [ "$BOOT_MODE" = "install" ]; then
   if [ ! -f "$QEMU_ISO" ]; then
     log "ERROR: BOOT_MODE=install but ISO not found at $QEMU_ISO"
-    log "Place your OpenBSD installer ISO at $QEMU_ISO or change QEMU_ISO env var."
+    log "Place your OpenBSD installer ISO at $QEMU_ISO or change QEMU_ISO env var (or set QEMU_ISO to a URL)."
     exit 1
   fi
   BOOT_ARGS=(-cdrom "$QEMU_ISO" -boot d)
