@@ -1,0 +1,1 @@
+This is a docker a set of script for running openbsd vm in docker it consist of both dockerfile and docker-compose for running the container updates to the readme for running and deploying the container will be updates soon
