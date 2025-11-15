@@ -2,7 +2,7 @@ FROM alpine:3.18
 
 # Install qemu, downloader and a small init to handle signals, plus python/git for noVNC/websockify
 RUN apk add --no-cache \
-    qemu qemu-img \
+    qemu qemu-img qemu-system-x86_64 \
     bash curl ca-certificates \
     dumb-init \
     python3 py3-pip git \
