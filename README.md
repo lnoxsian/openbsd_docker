@@ -1,5 +1,7 @@
 # openbsd_docker_amd64 — OpenBSD in Docker with KVM + noVNC
 
+![](https://github.com/lnoxsian/openbsd_docker_amd64/blob/main/.github/screen_cap_openbsd_docker_amd64.png?raw=true)
+
 A small Docker image and helper scripts that run QEMU/KVM to install and run an OpenBSD guest. The container:
 - stores VM artifacts under `./images` on the Docker host (ISO and `*.qcow2` disk),
 - can download an OpenBSD installer ISO automatically (when configured),
