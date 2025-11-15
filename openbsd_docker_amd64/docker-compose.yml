@@ -12,6 +12,12 @@ services:
     volumes:
       - ./images:/images
     ports:
+      # noVNC web UI (default 6080). Access via http://HOST:HOST_VNC_PORT/vnc.html
+      - "${HOST_VNC_PORT:-6080}:${HOST_VNC_PORT:-6080}"
+      # Optional: expose container's raw VNC TCP port (5901). Only needed if you want
+      # to use a native VNC client to connect directly to the container.
+      - "${HOST_VNC_RAW_PORT:-5901}:${HOST_VNC_RAW_PORT:-5901}"
+      # SSH forwarding via QEMU's user-net hostfwd
       - "${HOST_SSH_PORT:-2222}:${HOST_SSH_PORT:-2222}"
     environment:
       # If provided, the container will download this ISO to /images/install.iso
@@ -23,5 +29,11 @@ services:
       MEMORY: "2048"       # MB
       CORES: "2"
       HOST_SSH_PORT: "2222"
-      GRAPHICAL: "false"   # "true" to enable VGA display instead of serial
+      # Graphical / VNC / noVNC options
+      GRAPHICAL: "true"     # "true" to enable VNC + noVNC; "false" to use serial console
+      VNC_DISPLAY: "1"      # QEMU VNC display number (1 -> TCP 5901)
+      NOVNC_PORT: "6080"    # Port noVNC web UI listens on inside container
+      # Optional: if you want the raw VNC TCP port exposed on the host, set HOST_VNC_RAW_PORT
+      HOST_VNC_PORT: "6080" # Host port mapped to NOVNC_PORT
+      HOST_VNC_RAW_PORT: "5901"
     restart: unless-stopped
