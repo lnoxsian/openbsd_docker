@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  openbsd-kvm:
+    build: .
+    image: openbsd-kvm:latest
+    container_name: openbsd-kvm
+    devices:
+      - /dev/kvm:/dev/kvm
+    # seccomp must be relaxed for some KVM ioctls; avoid privileged if you can
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - ./images:/images
+    ports:
+      # Maps the host SSH forward port from QEMU to the host machine
+      - "${HOST_SSH_PORT:-2222}:${HOST_SSH_PORT:-2222}"
+    environment:
+      # If provided, the container will download this ISO to /images/install.iso
+      # Example: https://cdn.openbsd.org/pub/OpenBSD/7.4/amd64/install74.iso
+      OPENBSD_ISO_URL: ""
+      ISO_NAME: "install.iso"
+      DISK_NAME: "disk.qcow2"
+      DISK_SIZE: "20G"
+      MEMORY: "2048"       # MB
+      CORES: "2"
+      HOST_SSH_PORT: "2222"
+      GRAPHICAL: "false"   # "true" to try graphics (may require running with X forwarding)
+    restart: unless-stopped
