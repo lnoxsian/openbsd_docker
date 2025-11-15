@@ -51,7 +51,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./Dockerfile
+          file: ./openbsd_docker_amd64/Dockerfile
           platforms: linux/amd64
           # push when not a pull_request run. For PR builds this will skip pushing.
           push: ${{ github.event_name != 'pull_request' }}
