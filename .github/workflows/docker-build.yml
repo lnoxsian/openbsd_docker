@@ -38,7 +38,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image 
+      - name: Build and push Docker image
         id: build
         uses: docker/build-push-action@v4
         with:
@@ -60,10 +60,7 @@ jobs:
           echo "  ghcr.io/${{ github.repository_owner }}/openbsd_docker_amd64:latest"
           echo "  ghcr.io/${{ github.repository_owner }}/openbsd_docker_amd64:${{ github.sha }}"
 
-      - name: Upload build log as artifact (optional)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-build-logs
-          path: |
-            /dev/null
+      # Note: the previous workflow uploaded an "artifact" step which caused
+      # ENTRYNOTSUPPORTED warnings when the uploader attempted to zip unsupported
+      # filesystem entries. That step has been removed. If you need artifacts,
+      # create a clean tarball with only regular files and upload that instead.
