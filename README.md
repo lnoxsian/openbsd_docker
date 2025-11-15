@@ -38,6 +38,7 @@ Entrypoint behavior (what the container does)
 - If `GRAPHICAL=false`, QEMU runs headless on a serial console.
 
 Environment variables (defaults shown)
+```bash
 - BOOT_MODE="install"         # "install" or "boot"
 - OPENBSD_ISO_URL=""          # URL to download installer ISO (used when BOOT_MODE=install)
 - ISO_NAME="install.iso"
@@ -51,24 +52,31 @@ Environment variables (defaults shown)
 - HOST_VNC_PORT="6080"        # host port mapped to NOVNC_PORT
 - HOST_VNC_RAW_PORT="5901"    # host raw VNC TCP port (optional)
 - HOST_SSH_PORT="2222"        # host port forwarded to guest SSH (guest port 22)
+```
 
 Build the image
 - Using Docker CLI:
+```bash 
   docker build -t openbsd_docker_amd64:latest .
+```
 
 - Using Docker Compose (in same directory as `docker-compose.yml`):
+```bash 
   docker compose build
+```
 
 Create images directory (if not present)
+```bash
   mkdir -p ./images
   chmod 0777 ./images   # optional if you encounter permission issues
-
+```
 Run examples
 
 1) Install mode — boot the OpenBSD installer and create/overwrite disk image
 - This will download the ISO to `./images/install.iso` if `OPENBSD_ISO_URL` is set.
 
 One-line docker run:
+```bash 
 docker run --rm -it \
   --name openbsd-kvm \
   --device /dev/kvm:/dev/kvm \
@@ -87,8 +95,10 @@ docker run --rm -it \
   -e MEMORY="2048" \
   -e CORES="2" \
   openbsd_docker_amd64:latest
+```
 
 2) Boot mode — boot the qcow2 disk image (use after you installed OpenBSD)
+```bash
 docker run --rm -it \
   --name openbsd-kvm \
   --device /dev/kvm:/dev/kvm \
@@ -106,13 +116,18 @@ docker run --rm -it \
   -e MEMORY="2048" \
   -e CORES="2" \
   openbsd_docker_amd64:latest
+```
 
 Docker Compose
 - Use the included `docker-compose.yml` and set variables there or a `.env` file.
 - Start the service:
+```bash 
   docker compose up --build
+```
 - Or detached:
+```bash 
   docker compose up --build -d
+```
 
 How to interact with the VM
 - noVNC (browser):
@@ -131,7 +146,7 @@ Typical install workflow
 3. When install completes, shut down the VM from inside the guest.
 4. Restart the container with `BOOT_MODE=boot` to boot the installed system from `disk.qcow2`.
 
-Troubleshooting
+ Troubleshooting
 - noVNC inaccessible:
   - Ensure `websockify` is running (container logs): `docker logs openbsd-kvm`
   - Ensure Docker port mapping is correct and the host firewall allows the port.
