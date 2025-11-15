@@ -1,16 +1,11 @@
-# GitHub Actions workflow: build (and optionally push) the Docker image
-# Triggers: push to main branch and manual workflow_dispatch
-#
-# This workflow builds the image using Docker Buildx from the openbsd_docker_amd64
-# subfolder (context and Dockerfile located at ./openbsd_docker_amd64). It logs in
-# to ghcr.io using the workflow GITHUB_TOKEN and pushes on non-PR runs.
+# GitHub Actions workflow: build-only (no automatic push)
+# Triggers: manual only (workflow_dispatch). The previous behavior that pushed
+# images on pushes has been disabled — this workflow now builds the image
+# from the openbsd_docker_amd64 folder but will not push it to a registry.
 #
 name: docker-build
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -31,36 +26,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
+      - name: Build (no push) Docker image
         id: build
         uses: docker/build-push-action@v4
         with:
           context: ./openbsd_docker_amd64
           file: ./openbsd_docker_amd64/Dockerfile
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: false
           tags: |
             ghcr.io/${{ github.repository_owner }}/openbsd_docker_amd64:latest
             ghcr.io/${{ github.repository_owner }}/openbsd_docker_amd64:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Show built image digest
-        if: steps.build.outputs.digest != ''
+      - name: Show built image info
+        if: always()
         run: |
-          echo "Image digest: ${{ steps.build.outputs.digest }}"
-          echo "Image tags:"
+          echo "Build step completed. Note: images were not pushed (push: false)."
+          echo "Build tags (local metadata only):"
           echo "  ghcr.io/${{ github.repository_owner }}/openbsd_docker_amd64:latest"
           echo "  ghcr.io/${{ github.repository_owner }}/openbsd_docker_amd64:${{ github.sha }}"
-
-      # Note: the previous workflow uploaded an "artifact" step which caused
-      # ENTRYNOTSUPPORTED warnings when the uploader attempted to zip unsupported
-      # filesystem entries. That step has been removed. If you need artifacts,
-      # create a clean tarball with only regular files and upload that instead.
