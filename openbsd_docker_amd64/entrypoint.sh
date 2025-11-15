@@ -7,7 +7,7 @@ set -euo pipefail
 #  - boot    : boot the qcow2 disk image
 #
 # Set BOOT_MODE via docker-compose.yml or docker run -e BOOT_MODE=install|boot
-# Default: install (keeps prior behavior); change if you prefer boot as default.
+# Default: install
 
 OPENBSD_ISO_URL="${OPENBSD_ISO_URL:-}"
 ISO_NAME="${ISO_NAME:-install.iso}"
@@ -43,7 +43,7 @@ if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
   exit 1
 fi
 
-# Ensure ISO present if needed (download if OPENBSD_ISO_URL provided)
+# Ensure ISO present in install mode (download if OPENBSD_ISO_URL provided)
 if [ "${BOOT_MODE}" = "install" ]; then
   if [ ! -f "${ISO_PATH}" ]; then
     if [ -n "${OPENBSD_ISO_URL}" ]; then
@@ -60,7 +60,7 @@ if [ "${BOOT_MODE}" = "install" ]; then
   fi
 fi
 
-# Create disk image if missing (both modes may need a disk)
+# Create disk image if missing
 if [ ! -f "${DISK_PATH}" ]; then
   echo "Creating qcow2 disk ${DISK_PATH} (${DISK_SIZE}) ..."
   qemu-img create -f qcow2 "${DISK_PATH}" "${DISK_SIZE}"
@@ -102,13 +102,12 @@ case "${BOOT_MODE}" in
     if [ -f "${ISO_PATH}" ]; then
       QEMU_ARGS+=("-cdrom" "${ISO_PATH}" "-boot" "d")
     else
-      echo "ERROR: expected ISO at ${ISO_PATH} but missing (should have been downloaded earlier)."
+      echo "ERROR: expected ISO at ${ISO_PATH} but missing."
       exit 1
     fi
     ;;
   boot)
     echo "BOOT_MODE=boot: booting from disk image."
-    # Ensure we boot from disk first
     QEMU_ARGS+=("-boot" "c")
     ;;
   *)
@@ -117,22 +116,22 @@ case "${BOOT_MODE}" in
     ;;
 esac
 
-# Networking: user-mode with hostfwd for SSH (host -> guest via container port)
+# Networking: user-mode with hostfwd for SSH
 QEMU_ARGS+=("-netdev" "user,id=net0,hostfwd=tcp::${HOST_SSH_PORT}-:22")
 QEMU_ARGS+=("-device" "virtio-net-pci,netdev=net0")
 
 # Graphics / VNC / noVNC
 if [ "${GRAPHICAL}" = "true" ]; then
-  # Bind QEMU's VNC to localhost only; websockify will proxy it to the browser.
   QEMU_ARGS+=("-vnc" "127.0.0.1:${VNC_DISPLAY}")
   echo "Starting QEMU with VNC on 127.0.0.1:${VNC_PORT} (display ${VNC_DISPLAY})."
 
-  # Start websockify (noVNC) to proxy /opt/noVNC to NOVNC_PORT and forward to the VNC port
+  # Start websockify (noVNC) using positional source_addr:source_port so it binds properly.
   if [ -d "${NOVNC_WEB_DIR}" ]; then
     if command -v websockify >/dev/null 2>&1; then
       echo "Starting websockify serving ${NOVNC_WEB_DIR} on port ${NOVNC_PORT}, proxying to 127.0.0.1:${VNC_PORT}"
-      # Bind to 0.0.0.0 so Docker port mapping is reachable from the host
-      websockify --web "${NOVNC_WEB_DIR}" --bind=0.0.0.0 "${NOVNC_PORT}" 127.0.0.1:${VNC_PORT} --heartbeat=30 &
+      # Use positional listen address so older/newer websockify variants work:
+      #   websockify --web /path 0.0.0.0:6080 127.0.0.1:5901
+      websockify --web "${NOVNC_WEB_DIR}" "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" --heartbeat=30 &
       WEBSOCKIFY_PID=$!
       echo "websockify pid=${WEBSOCKIFY_PID}"
     else
@@ -141,10 +140,7 @@ if [ "${GRAPHICAL}" = "true" ]; then
   else
     echo "WARNING: noVNC web directory ${NOVNC_WEB_DIR} not found. noVNC will not be available."
   fi
-
-  # Do not add -nographic so VNC works
 else
-  # Headless serial mode
   QEMU_ARGS+=("-nographic" "-serial" "mon:stdio")
   echo "Starting QEMU in headless mode (serial console)."
 fi
