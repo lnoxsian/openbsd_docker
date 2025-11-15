@@ -126,7 +126,7 @@ Create images directory (if not present):
     -p 5901:5901 \
     -p 2222:2222 \
     -e BOOT_MODE="install" \
-    -e OPENBSD_ISO_URL="https://cdn.openbsd.org/pub/OpenBSD/7.4/amd64/install74.iso" \
+    -e OPENBSD_ISO_URL="https://cdn.openbsd.org/pub/OpenBSD/X.X/amd64/installXX.iso" \
     -e GRAPHICAL="true" \
     -e VNC_DISPLAY="1" \
     -e NOVNC_PORT="6080" \
