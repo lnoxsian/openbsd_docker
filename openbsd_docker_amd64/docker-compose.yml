@@ -7,13 +7,11 @@ services:
     container_name: openbsd-kvm
     devices:
       - /dev/kvm:/dev/kvm
-    # seccomp must be relaxed for some KVM ioctls; avoid privileged if you can
     security_opt:
       - seccomp:unconfined
     volumes:
       - ./images:/images
     ports:
-      # Maps the host SSH forward port from QEMU to the host machine
       - "${HOST_SSH_PORT:-2222}:${HOST_SSH_PORT:-2222}"
     environment:
       # If provided, the container will download this ISO to /images/install.iso
@@ -25,5 +23,5 @@ services:
       MEMORY: "2048"       # MB
       CORES: "2"
       HOST_SSH_PORT: "2222"
-      GRAPHICAL: "false"   # "true" to try graphics (may require running with X forwarding)
+      GRAPHICAL: "false"   # "true" to enable VGA display instead of serial
     restart: unless-stopped
