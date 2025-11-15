@@ -7,6 +7,11 @@
 # reachable. It also checks for /dev/kvm on the host and prompts about continuing
 # in emulation mode if KVM is not available (honors --non-interactive).
 #
+# It now asks whether you want to expose the guest SSH port to the Docker host.
+# If you answer "no", the script will not publish the SSH port on the host (the
+# container will still configure QEMU hostfwd inside the container, but the host
+# will not have a mapped port).
+#
 # Usage:
 #   ./run_in_docker.sh
 #   ./run_in_docker.sh --non-interactive    # will use defaults (no prompts)
@@ -150,13 +155,24 @@ prompt GRAPHICAL "$DEFAULT_GRAPHICAL" "GRAPHICAL (true|false) - use VNC/noVNC or
 prompt VNC_DISPLAY "$DEFAULT_VNC_DISPLAY" "VNC display number (1 => 5901)"
 prompt NOVNC_PORT "$DEFAULT_NOVNC_PORT" "noVNC web UI port inside container"
 prompt HOST_VNC_PORT "$DEFAULT_HOST_VNC_PORT" "Host port mapped to noVNC web UI"
+
+# expose the vnc locally dont need if using novnc
 prompt expose_raw_vnc "no" "Expose raw VNC TCP port to host? (yes|no)"
 if [ "${expose_raw_vnc,,}" = "yes" ] || [ "${expose_raw_vnc,,}" = "y" ]; then
   prompt HOST_VNC_RAW_PORT "$DEFAULT_HOST_VNC_RAW_PORT" "Host raw VNC TCP port"
 else
   HOST_VNC_RAW_PORT=""
 fi
-prompt HOST_SSH_PORT "$DEFAULT_HOST_SSH_PORT" "Host port forwarded to guest SSH (guest:22)"
+
+
+# expose the ssh locally dont need if using novnc
+prompt expose_ssh "yes" "Expose guest SSH port to Docker host? (yes|no)"
+if [ "${expose_ssh,,}" = "yes" ] || [ "${expose_ssh,,}" = "y" ]; then
+  prompt HOST_SSH_PORT "$DEFAULT_HOST_SSH_PORT" "Host port forwarded to guest SSH (guest:22)"
+else
+  HOST_SSH_PORT=""
+fi
+
 prompt DETACHED "no" "Run container detached? (yes|no)"
 
 # Compute derived values
@@ -186,7 +202,7 @@ cat <<EOF
  noVNC port (ctr):  $NOVNC_PORT
  noVNC port (host): $HOST_VNC_PORT
  Raw VNC host port: ${HOST_VNC_RAW_PORT:-<not exposed>}
- SSH host port:     $HOST_SSH_PORT
+ SSH host port:     ${HOST_SSH_PORT:-<not exposed>}
  Run detached:      $DETACHED
 EOF
 
@@ -236,8 +252,10 @@ if [ -n "$HOST_VNC_RAW_PORT" ]; then
   # container VNC port is VNC_PORT
   RUN_ARGS+=(-p "${HOST_VNC_RAW_PORT}:${VNC_PORT}")
 fi
-# Map SSH forward port (host -> container -> guest:22)
-RUN_ARGS+=(-p "${HOST_SSH_PORT}:${HOST_SSH_PORT}")
+# Map SSH forward port (host -> container -> guest:22) only if user asked to expose it
+if [ -n "$HOST_SSH_PORT" ]; then
+  RUN_ARGS+=(-p "${HOST_SSH_PORT}:${HOST_SSH_PORT}")
+fi
 
 # Environment variables to pass in
 ENV_ARGS=(
@@ -251,8 +269,11 @@ ENV_ARGS=(
   -e "GRAPHICAL=${GRAPHICAL}"
   -e "VNC_DISPLAY=${VNC_DISPLAY}"
   -e "NOVNC_PORT=${NOVNC_PORT}"
-  -e "HOST_SSH_PORT=${HOST_SSH_PORT}"
 )
+# Only pass HOST_SSH_PORT env if user chose to expose it (helps avoid confusion)
+if [ -n "$HOST_SSH_PORT" ]; then
+  ENV_ARGS+=(-e "HOST_SSH_PORT=${HOST_SSH_PORT}")
+fi
 
 # Build final docker run command (array-safe)
 DOCKER_CMD=(docker run "${RUN_ARGS[@]}" "${ENV_ARGS[@]}" "$IMAGE_TAG")
@@ -288,6 +309,12 @@ if [ "${GRAPHICAL,,}" = "true" ]; then
 else
   echo " - Running headless. QEMU serial console is attached to the container's logs/stdout."
 fi
-echo " - SSH (after guest sshd running): ssh -p ${HOST_SSH_PORT} user@<docker-host>"
+
+if [ -n "$HOST_SSH_PORT" ]; then
+  echo " - SSH (after guest sshd running): ssh -p ${HOST_SSH_PORT} user@<docker-host>"
+else
+  echo " - SSH port not exposed on the Docker host. You can still access guest ssh via the container if you exec into it or expose the port later."
+fi
+
 echo
 echo "Images and disk are stored on host at: $IMAGES_DIR"
