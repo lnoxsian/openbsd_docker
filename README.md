@@ -39,19 +39,19 @@ Entrypoint behavior (what the container does)
 
 Environment variables (defaults shown)
 ```bash
-- BOOT_MODE="install"         # "install" or "boot"
-- OPENBSD_ISO_URL=""          # URL to download installer ISO (used when BOOT_MODE=install)
-- ISO_NAME="install.iso"
-- DISK_NAME="disk.qcow2"
-- DISK_SIZE="20G"
-- MEMORY="2048"               # MB
-- CORES="2"
-- GRAPHICAL="true"            # true -> VNC + noVNC; false -> serial console
-- VNC_DISPLAY="1"             # QEMU VNC display number (1 => 5901)
-- NOVNC_PORT="6080"           # noVNC web UI port inside container
-- HOST_VNC_PORT="6080"        # host port mapped to NOVNC_PORT
-- HOST_VNC_RAW_PORT="5901"    # host raw VNC TCP port (optional)
-- HOST_SSH_PORT="2222"        # host port forwarded to guest SSH (guest port 22)
+  BOOT_MODE="install"         # "install" or "boot"
+  OPENBSD_ISO_URL=""          # URL to download installer ISO (used when BOOT_MODE=install)
+  ISO_NAME="install.iso"
+  DISK_NAME="disk.qcow2"
+  DISK_SIZE="20G"
+  MEMORY="2048"               # MB
+  CORES="2"
+  GRAPHICAL="true"            # true -> VNC + noVNC; false -> serial console
+  VNC_DISPLAY="1"             # QEMU VNC display number (1 => 5901)
+  NOVNC_PORT="6080"           # noVNC web UI port inside container
+  HOST_VNC_PORT="6080"        # host port mapped to NOVNC_PORT
+  HOST_VNC_RAW_PORT="5901"    # host raw VNC TCP port (optional)
+  HOST_SSH_PORT="2222"        # host port forwarded to guest SSH (guest port 22)
 ```
 
 Build the image
@@ -76,7 +76,7 @@ Run examples
 - This will download the ISO to `./images/install.iso` if `OPENBSD_ISO_URL` is set.
 
 One-line docker run:
-```bash 
+```bash
 docker run --rm -it \
   --name openbsd-kvm \
   --device /dev/kvm:/dev/kvm \
