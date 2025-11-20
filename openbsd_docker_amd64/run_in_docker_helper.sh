@@ -141,7 +141,7 @@ fi
 
 echo
 echo "Building Docker image: $IMAGE_TAG"
-docker build -t "$IMAGE_TAG" ./openbsd_docker_amd64
+docker build -t "$IMAGE_TAG" .
 
 if docker ps -a --format '{{.Names}}' | grep -q "^openbsd-kvm$"; then
   echo "Found existing container named openbsd-kvm - removing it."
