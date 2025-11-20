@@ -2,12 +2,14 @@
 set -euo pipefail
 
 # Entrypoint for openbsd-kvm container
-# Supports two boot modes controlled by BOOT_MODE:
-#  - install : boot the installer ISO (requires ISO present or OPENBSD_ISO_URL set)
-#  - boot    : boot the qcow2 disk image
+# Supports:
+#  - BOOT_MODE: "install" or "boot"
+#  - FIRMWARE: "legacy" (default) or "uefi"
+#  - GRAPHICAL: "true" or "false"
 #
-# Set BOOT_MODE via docker-compose.yml or docker run -e BOOT_MODE=install|boot
-# Default: install
+# The script will attempt to use UEFI (OVMF) when FIRMWARE=uefi and a suitable
+# OVMF code file exists inside the container. If not found, it will fall back
+# to legacy BIOS.
 
 OPENBSD_ISO_URL="${OPENBSD_ISO_URL:-}"
 ISO_NAME="${ISO_NAME:-install.iso}"
@@ -18,11 +20,11 @@ CORES="${CORES:-2}"
 HOST_SSH_PORT="${HOST_SSH_PORT:-2222}"
 GRAPHICAL="${GRAPHICAL:-false}"
 BOOT_MODE="${BOOT_MODE:-install}"   # "install" or "boot"
+FIRMWARE="${FIRMWARE:-legacy}"      # "legacy" or "uefi"
 
 # VNC / noVNC
 VNC_DISPLAY="${VNC_DISPLAY:-1}"     # QEMU display number (1 => 5901)
 NOVNC_PORT="${NOVNC_PORT:-6080}"    # Port to serve noVNC web UI inside container
-# Compute TCP VNC port from display
 VNC_PORT=$((5900 + VNC_DISPLAY))
 
 IMAGES_DIR="/images"
@@ -66,7 +68,7 @@ if [ ! -f "${DISK_PATH}" ]; then
   qemu-img create -f qcow2 "${DISK_PATH}" "${DISK_SIZE}"
 fi
 
-# Check KVM availability
+# KVM availability
 USE_KVM="false"
 if [ -e /dev/kvm ]; then
   if [ -r /dev/kvm ] || [ -w /dev/kvm ]; then
@@ -81,7 +83,6 @@ fi
 QEMU_BIN="qemu-system-x86_64"
 QEMU_ARGS=()
 
-# KVM / CPU
 if [ "${USE_KVM}" = "true" ]; then
   QEMU_ARGS+=("-enable-kvm" "-cpu" "host")
   echo "KVM available: enabling -enable-kvm."
@@ -89,22 +90,54 @@ else
   echo "KVM not available: running without -enable-kvm (emulation)."
 fi
 
-# Memory & CPUs
 QEMU_ARGS+=("-m" "${MEMORY}" "-smp" "${CORES}")
-
-# Disk as virtio
 QEMU_ARGS+=("-drive" "file=${DISK_PATH},if=virtio,cache=writeback,format=qcow2")
+
+# Firmware: legacy (BIOS) or uefi (OVMF)
+if [ "${FIRMWARE}" = "uefi" ]; then
+  echo "FIRMWARE=uefi requested: looking for OVMF firmware in the container..."
+  OVMF_CANDIDATES=(
+    "/usr/share/edk2-ovmf/OVMF_CODE.fd"
+    "/usr/share/edk2/ovmf/OVMF_CODE.fd"
+    "/usr/share/ovmf/OVMF_CODE.fd"
+    "/usr/share/qemu/ovmf-x86_64-code.bin"
+    "/usr/share/qemu/ovmf-x64-code.bin"
+    "/usr/share/OVMF/OVMF_CODE.fd"
+  )
+  OVMF_CODE=""
+  for p in "${OVMF_CANDIDATES[@]}"; do
+    if [ -f "${p}" ]; then
+      OVMF_CODE="${p}"
+      break
+    fi
+  done
+
+  if [ -n "${OVMF_CODE}" ]; then
+    echo "Found OVMF code file: ${OVMF_CODE}"
+    # Create a writable vars file (copy the code file to use as a template)
+    OVMF_VARS="/tmp/OVMF_VARS.fd"
+    if [ ! -f "${OVMF_VARS}" ]; then
+      echo "Preparing writable OVMF vars file at ${OVMF_VARS}"
+      cp "${OVMF_CODE}" "${OVMF_VARS}"
+      chmod 666 "${OVMF_VARS}" || true
+    fi
+    # Add pflash drives: code (readonly) and vars (writable)
+    QEMU_ARGS+=(-drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}")
+    QEMU_ARGS+=(-drive "if=pflash,format=raw,file=${OVMF_VARS}")
+    echo "UEFI support enabled using pflash drives."
+  else
+    echo "WARNING: No OVMF/EDK2 firmware found in container; falling back to legacy BIOS."
+    FIRMWARE="legacy"
+  fi
+else
+  echo "FIRMWARE=legacy (BIOS) selected."
+fi
 
 # Mode-specific boot configuration
 case "${BOOT_MODE}" in
   install)
     echo "BOOT_MODE=install: attaching ISO ${ISO_PATH} as CD-ROM and setting boot to CD."
-    if [ -f "${ISO_PATH}" ]; then
-      QEMU_ARGS+=("-cdrom" "${ISO_PATH}" "-boot" "d")
-    else
-      echo "ERROR: expected ISO at ${ISO_PATH} but missing."
-      exit 1
-    fi
+    QEMU_ARGS+=("-cdrom" "${ISO_PATH}" "-boot" "d")
     ;;
   boot)
     echo "BOOT_MODE=boot: booting from disk image."
@@ -116,8 +149,13 @@ case "${BOOT_MODE}" in
     ;;
 esac
 
-# Networking: user-mode with hostfwd for SSH
-QEMU_ARGS+=("-netdev" "user,id=net0,hostfwd=tcp::${HOST_SSH_PORT}-:22")
+# Networking: user-mode with hostfwd for SSH (only if HOST_SSH_PORT provided)
+if [ -n "${HOST_SSH_PORT:-}" ]; then
+  QEMU_ARGS+=("-netdev" "user,id=net0,hostfwd=tcp::${HOST_SSH_PORT}-:22")
+else
+  # still create a network device without hostfwd so guest has networking
+  QEMU_ARGS+=("-netdev" "user,id=net0")
+fi
 QEMU_ARGS+=("-device" "virtio-net-pci,netdev=net0")
 
 # Graphics / VNC / noVNC
@@ -125,12 +163,9 @@ if [ "${GRAPHICAL}" = "true" ]; then
   QEMU_ARGS+=("-vnc" "127.0.0.1:${VNC_DISPLAY}")
   echo "Starting QEMU with VNC on 127.0.0.1:${VNC_PORT} (display ${VNC_DISPLAY})."
 
-  # Start websockify (noVNC) using positional source_addr:source_port so it binds properly.
   if [ -d "${NOVNC_WEB_DIR}" ]; then
     if command -v websockify >/dev/null 2>&1; then
       echo "Starting websockify serving ${NOVNC_WEB_DIR} on port ${NOVNC_PORT}, proxying to 127.0.0.1:${VNC_PORT}"
-      # Use positional listen address so older/newer websockify variants work:
-      #   websockify --web /path 0.0.0.0:6080 127.0.0.1:5901
       websockify --web "${NOVNC_WEB_DIR}" "0.0.0.0:${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" --heartbeat=30 &
       WEBSOCKIFY_PID=$!
       echo "websockify pid=${WEBSOCKIFY_PID}"

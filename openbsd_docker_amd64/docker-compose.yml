@@ -2,8 +2,8 @@ version: "3.8"
 
 services:
   openbsd-kvm:
-    build: .
-    image: openbsd-kvm:latest
+    build: ./openbsd_docker_amd64
+    image: openbsd_docker_amd64:latest
     container_name: openbsd-kvm
     devices:
       - /dev/kvm:/dev/kvm
@@ -17,9 +17,12 @@ services:
       # Optional: expose container's raw VNC TCP port (5901). Only needed if you want
       # to use a native VNC client to connect directly to the container.
       - "${HOST_VNC_RAW_PORT:-5901}:${HOST_VNC_RAW_PORT:-5901}"
-      # SSH forwarding via QEMU's user-net hostfwd (host -> guest via container)
+      # SSH forwarding via QEMU's user-net hostfwd (only if HOST_SSH_PORT set)
       - "${HOST_SSH_PORT:-2222}:${HOST_SSH_PORT:-2222}"
     environment:
+      # Firmware selection: "legacy" (BIOS) or "uefi" (OVMF). Default: legacy
+      FIRMWARE: "legacy"
+
       # Boot mode: "install" = boot the installer ISO, "boot" = boot the qcow2 disk image
       BOOT_MODE: "install"
 
