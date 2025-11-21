@@ -1,215 +1,217 @@
-# openbsd_docker_amd64 — OpenBSD in Docker with KVM + noVNC
+# openbsd_docker_amd64 — OpenBSD in Docker with KVM, noVNC, and firmware selection
 
-![](https://github.com/lnoxsian/openbsd_docker_amd64/blob/main/.github/screen_cap_openbsd_docker_amd64.png?raw=true)
+A Docker image + helper scripts to run an OpenBSD VM using QEMU inside a container. Features:
+- VM artifacts stored under `./images` on the host (ISO and `*.qcow2` disk).
+- Two boot modes:
+  - `install` — boot the installer ISO and install to the qcow2 disk.
+  - `boot` — boot the qcow2 disk image.
+- Two firmware modes:
+  - `legacy` — classic BIOS (default).
+  - `uefi` — UEFI via OVMF/EDK2 (requires OVMF firmware files inside the image or mounted from host).
+- Browser-accessible noVNC UI (websockify proxy), optional raw VNC, and guest SSH forwarding (optional).
+- Helper script `run_in_docker_helper.sh` to interactively build and run the container.
 
-A small Docker image and helper scripts that run QEMU/KVM to install and run an OpenBSD guest. The container:
-- stores VM artifacts under `./images` on the Docker host (ISO and `*.qcow2` disk),
-- can download an OpenBSD installer ISO automatically (when configured),
-- supports two boot modes:
-  - `install` — boot the installer ISO and install to the qcow2 disk,
-  - `boot` — boot the qcow2 disk image,
-- exposes a browser-accessible noVNC web UI and (optionally) raw VNC,
-- forwards guest SSH (via QEMU user-mode networking) to the Docker host.
-
-This README explains the entrypoint behavior, environment variables, build/run examples, the interactive helper script (`run_in_docker_helper.sh`), and troubleshooting tips.
+This README documents the new FIRMWARE option, how to use it with the helper, and the environment variables.
 
 ---
 
 ## Contents
-- `Dockerfile` — builds the image with QEMU, websockify and noVNC.
-- `docker-compose.yml` — example compose file and environment defaults.
-- `entrypoint.sh` — starts QEMU, handles ISO download, qcow2 creation, and noVNC/websockify.
-- `run_in_docker_helper.sh` (helper) — interactive script to build & run the container.
+- `openbsd_docker_amd64/` — build context with `Dockerfile`, `entrypoint.sh`, noVNC is cloned into `/opt/noVNC`.
+- `docker-compose.yml` — example compose file.
+- `run_in_docker_helper.sh` — interactive helper to build and run the container.
+- `images/` — host-mounted directory for ISOs and disk images (created automatically by the helper if missing).
 
 ---
 
 ## Prerequisites
-- Docker (or Docker Compose)
-- On the Docker host: KVM enabled and `/dev/kvm` present (for hardware acceleration)
-  - Check: `ls /dev/kvm` and `lsmod | grep kvm`
-  - If the host is a VM, nested virtualization must be enabled.
-- A writable `./images` directory on the Docker host (the helper will create it if missing).
+- Docker (or Docker Compose).
+- Recommended: host with KVM enabled (`/dev/kvm`) for acceleration. If not present, QEMU runs in slow emulation mode.
+- Writable `./images` directory on the Docker host (helper will create it if missing).
+- If you plan to use UEFI: OVMF/EDK2 firmware files must be present in the container (or mounted from the host). See "UEFI (OVMF) support" below.
 
 ---
 
-## Entrypoint behavior (what the container does)
-- Ensures `/images` exists (host-mounted `./images` recommended).
-- If `BOOT_MODE=install`:
-  - If `ISO` is missing and `OPENBSD_ISO_URL` is set, the ISO is downloaded to `/images/<ISO_NAME>`.
-  - QEMU is started with the ISO attached (`-cdrom`) and `-boot d`.
-- If `BOOT_MODE=boot`:
-  - QEMU boots directly from the qcow2 disk image (`-boot c`).
-- If the disk (`/images/<DISK_NAME>`) doesn't exist, it is created automatically with `qemu-img create`.
-- If `GRAPHICAL=true`, QEMU is started with a VNC server bound to `127.0.0.1:59XX`. `websockify` (noVNC) proxies that VNC to a websocket and serves the noVNC web UI.
-- If `GRAPHICAL=false`, QEMU runs headless on a serial console.
+## New feature: firmware selection (FIRMWARE)
+- New environment variable: `FIRMWARE` — controls VM firmware:
+  - `legacy` (default) — BIOS-style boot (SeaBIOS / QEMU default).
+  - `uefi` — attempts to enable UEFI using OVMF/EDK2 firmware files.
+- Behavior:
+  - If `FIRMWARE=uefi`, the entrypoint searches common container paths for OVMF/EDK2 code files (OVMF_CODE.fd or common package paths).
+  - If found, the script configures QEMU with two pflash drives (readonly code + writable vars file) and enables UEFI boot.
+  - If not found, the script warns and falls back to `legacy` BIOS automatically.
+- Typical use cases:
+  - Use legacy BIOS for normal OpenBSD installs (default & simplest).
+  - Use UEFI if you need an EFI environment or are installing UEFI-only OSes / testing EFI boot.
 
 ---
 
-## Environment variables (defaults shown)
-- `BOOT_MODE="install"`         # "install" or "boot"
-- `OPENBSD_ISO_URL=""`          # URL to download installer ISO (used when BOOT_MODE=install)
-- `ISO_NAME="install.iso"`
-- `DISK_NAME="disk.qcow2"`
-- `DISK_SIZE="20G"`
-- `MEMORY="2048"`               # MB
-- `CORES="2"`
-- `GRAPHICAL="true"`            # true -> VNC + noVNC; false -> serial console
-- `VNC_DISPLAY="1"`             # QEMU VNC display number (1 => 5901)
-- `NOVNC_PORT="6080"`           # noVNC web UI port inside container
-- `HOST_VNC_PORT="6080"`        # host port mapped to NOVNC_PORT
-- `HOST_VNC_RAW_PORT="5901"`    # host raw VNC TCP port (optional)
-- `HOST_SSH_PORT="2222"`        # host port forwarded to guest SSH (guest port 22)
+## Environment variables
+Defaults shown in parentheses. Important/new ones bolded.
+
+- BOOT_MODE ("install") — "install" to boot the installer ISO, "boot" to boot the qcow2 disk.
+- OPENBSD_ISO_URL ("") — URL to download installer ISO (used when BOOT_MODE=install).
+- ISO_NAME ("install.iso")
+- DISK_NAME ("disk.qcow2")
+- DISK_SIZE ("20G")
+- MEMORY ("2048") — MB
+- CORES ("2")
+- GRAPHICAL ("true") — "true" enables VNC + noVNC; "false" runs headless serial.
+- VNC_DISPLAY ("1") — QEMU VNC display number (1 → TCP 5901)
+- NOVNC_PORT ("6080") — noVNC web UI port inside container
+- HOST_VNC_PORT ("6080") — host port mapped to `NOVNC_PORT`
+- HOST_VNC_RAW_PORT ("5901") — host raw VNC TCP port (optional)
+- HOST_SSH_PORT ("2222") — host port forwarded to guest SSH (guest port 22). Optional; helper can ask to expose SSH or not.
+- **FIRMWARE ("legacy")** — "legacy" or "uefi"
+  - If `uefi`, entrypoint will attempt to enable OVMF. If OVMF is missing it falls back to legacy BIOS.
+
+---
+
+## UEFI (OVMF/EDK2) support
+To use `FIRMWARE=uefi` you must provide OVMF firmware files inside the container (or mount them from host). Two approaches:
+
+1. Install OVMF into the image (recommended if you control the Dockerfile):
+   - Add the appropriate package to the Dockerfile (package name depends on base image):
+     - Alpine: package may be `edk2-ovmf`, `ovmf` or available as `ovmf` in some distros. If using Alpine, test availability or pin the package name/version.
+     - Example (Alpine): `apk add --no-cache edk2-ovmf` (verify package name for the chosen Alpine version).
+   - Rebuild the image.
+
+2. Mount OVMF files from host:
+   - Place the OVMF code file (e.g., `OVMF_CODE.fd`) and optionally a writable vars file into a host directory.
+   - Mount the directory into the container at a path the entrypoint checks (or adjust entrypoint paths).
+   - Example docker run: `-v /path/to/ovmf:/ovmf` and set `-e FIRMWARE=uefi` and bind the `OVMF_CODE.fd` into one of the known paths or update entrypoint.
+
+Notes:
+- The entrypoint attempts to find common OVMF paths (several typical locations). If none found, it prints a warning and falls back.
+- The script will create a writable vars file (copied from the code file) at `/tmp/OVMF_VARS.fd` to preserve variable storage across VM runtime. For persistent vars, mount a host file.
+
+---
+
+## Build the image
+From repo root (assuming `openbsd_docker_amd64/` folder contains Dockerfile and entrypoint.sh):
+```bash
+docker build -t openbsd_docker_amd64:latest ./openbsd_docker_amd64
+```
+Or use the included helper (recommended) which will build and run for you.
+
+---
+
+## Run examples
+
+1) Install mode with BIOS (default):
+```bash
+docker run --rm -it \
+  --name openbsd-kvm \
+  --device /dev/kvm:/dev/kvm \
+  --security-opt seccomp=unconfined \
+  -v "$(pwd)/images":/images \
+  -p 6080:6080 \
+  -p 5901:5901 \
+  -p 2222:2222 \
+  -e BOOT_MODE="install" \
+  -e OPENBSD_ISO_URL="https://cdn.openbsd.org/pub/OpenBSD/7.4/amd64/install74.iso" \
+  -e FIRMWARE="legacy" \
+  -e GRAPHICAL="true" \
+  openbsd_docker_amd64:latest
+```
+
+2) Boot installed system with UEFI (if OVMF present in container or mounted):
+```bash
+docker run --rm -it \
+  --name openbsd-kvm \
+  --device /dev/kvm:/dev/kvm \
+  --security-opt seccomp=unconfined \
+  -v "$(pwd)/images":/images \
+  -v /host/ovmf:/opt/ovmf:ro \            # optional: mount OVMF files from host
+  -p 6080:6080 \
+  -p 5901:5901 \
+  -p 2222:2222 \
+  -e BOOT_MODE="boot" \
+  -e FIRMWARE="uefi" \
+  -e GRAPHICAL="true" \
+  openbsd_docker_amd64:latest
+```
+
+If UEFI files are not present, the entrypoint will warn and boot using legacy BIOS.
+
+---
+
+## Docker Compose
+A sample `docker-compose.yml` includes:
+```yaml
+environment:
+  FIRMWARE: "legacy"   # or "uefi"
+  BOOT_MODE: "install"
+  OPENBSD_ISO_URL: ""
+  ISO_NAME: "install.iso"
+  DISK_NAME: "disk.qcow2"
+  DISK_SIZE: "20G"
+  MEMORY: "2048"
+  CORES: "2"
+  GRAPHICAL: "true"
+  VNC_DISPLAY: "1"
+  NOVNC_PORT: "6080"
+  HOST_VNC_PORT: "6080"
+  HOST_VNC_RAW_PORT: "5901"
+  HOST_SSH_PORT: "2222"
+```
+Set `FIRMWARE` to `uefi` to request UEFI boot (requires OVMF in image or mounted).
 
 ---
 
 ## Helper: run_in_docker_helper.sh
-To make using this project easier, a helper script is included: `run_in_docker_helper.sh`. The helper will:
-- verify Docker is installed and the Docker daemon is reachable,
-- check for `/dev/kvm` on the host and prompt about running in emulation mode if missing,
-- prompt for and collect common environment configuration (BOOT_MODE, OPENBSD_ISO_URL, memory, cores, disk size, ports, graphical),
-- create `./images` if missing,
-- build the Docker image,
-- stop/remove any existing container named `openbsd-kvm`,
-- run `docker run` with sensible ports, mounts and env variables.
+The helper script prompts for common settings (BOOT_MODE, OPENBSD_ISO_URL, MEMORY, CORES, GRAPHICAL, VNC ports, whether to expose SSH) and now prompts for `FIRMWARE` (default `legacy`). It:
+- verifies Docker
+- checks `/dev/kvm` and prompts whether to continue if missing
+- builds the image from `./openbsd_docker_amd64`
+- runs the container with selected env vars and port mappings
 
 Usage:
 1. Make the script executable:
-```bash
-   chmod +x run_in_docker_helper.sh # just use bash run_in_docker_helper.sh
-```
+   chmod +x run_in_docker_helper.sh
 
-2. Run interactively (recommended):
-```bash
-  ./run_in_docker_helper.sh
-```
+2. Run interactively:
+   ./run_in_docker_helper.sh
 
-3. Run non-interactively using defaults:
-```bash
+3. Non-interactive with defaults:
    ./run_in_docker_helper.sh --non-interactive
-```
 
-4. The script will show a summary of settings and ask to proceed (unless `--non-interactive`).
-
-Notes:
-- The helper passes environment variables to the container; you can also use a `.env` file or docker-compose for persistent settings.
-
----
-
-## Build the image (manual)
-- Using Docker CLI:
-```bash
-  docker build -t openbsd_docker_amd64:latest .
-```
-
-- Using Docker Compose:
-```bash
-  docker compose build
-```
-
----
-
-## Run examples (manual)
-Create images directory (if not present):
-```bash
-  mkdir -p ./images
-  chmod 0777 ./images   # optional if you encounter permission issues
-```
-
-1) Install mode — boot the OpenBSD installer and create/overwrite disk image
-```bash
-  docker run --rm -it \
-    --name openbsd-kvm \
-    --device /dev/kvm:/dev/kvm \
-    --security-opt seccomp=unconfined \
-    -v "$(pwd)/images":/images \
-    -p 6080:6080 \
-    -p 5901:5901 \
-    -p 2222:2222 \
-    -e BOOT_MODE="install" \
-    -e OPENBSD_ISO_URL="https://cdn.openbsd.org/pub/OpenBSD/X.X/amd64/installXX.iso" \
-    -e GRAPHICAL="true" \
-    -e VNC_DISPLAY="1" \
-    -e NOVNC_PORT="6080" \
-    -e HOST_SSH_PORT="2222" \
-    -e DISK_SIZE="20G" \
-    -e MEMORY="2048" \
-    -e CORES="2" \
-    openbsd_docker_amd64:latest
-```
-
-2) Boot mode — boot the qcow2 disk image (use after you installed OpenBSD)
-```bash
-  docker run --rm -it \
-    --name openbsd-kvm \
-    --device /dev/kvm:/dev/kvm \
-    --security-opt seccomp=unconfined \
-    -v "$(pwd)/images":/images \
-    -p 6080:6080 \
-    -p 5901:5901 \
-    -p 2222:2222 \
-    -e BOOT_MODE="boot" \
-    -e GRAPHICAL="true" \
-    -e VNC_DISPLAY="1" \
-    -e NOVNC_PORT="6080" \
-    -e HOST_SSH_PORT="2222" \
-    -e DISK_SIZE="20G" \
-    -e MEMORY="2048" \
-    -e CORES="2" \
-    openbsd_docker_amd64:latest
-```
-
----
-
-## How to interact with the VM
-- noVNC (browser):
-  - Open: `http://<docker-host>:<HOST_VNC_PORT>/vnc.html`
-  - Default example: `http://localhost:6080/vnc.html`
-- Raw VNC (optional):
-  - If you mapped `5901:5901` you may connect with a desktop VNC client to `localhost:5901`.
-- SSH (after OpenBSD sshd is installed & running inside the guest):
-  - ssh -p 2222 user@localhost
+When you choose `FIRMWARE=uefi` the helper will pass that into the container; the entrypoint will enable UEFI if OVMF files are available.
 
 ---
 
 ## Typical install workflow
-1. Run container with `BOOT_MODE=install` and `OPENBSD_ISO_URL` set (or drop the ISO into `./images/install.iso`).
-2. Use noVNC to run the installer and install OpenBSD to the disk `disk.qcow2`.
-3. When install completes, shut down the VM from inside the guest.
-4. Restart the container with `BOOT_MODE=boot` to boot the installed system from `disk.qcow2`.
+1. Run container with `BOOT_MODE=install` and `OPENBSD_ISO_URL` set (or place ISO in `./images/install.iso`).
+2. Use noVNC (`http://<host>:6080/vnc.html`) to run the OpenBSD installer and install to `disk.qcow2`.
+3. Shutdown the VM inside the guest after install.
+4. Re-run container with `BOOT_MODE=boot` to boot the installed system. Set `FIRMWARE=uefi` if the install was performed under UEFI (and OVMF present).
 
 ---
 
 ## Troubleshooting
 - noVNC inaccessible:
-  - Ensure `websockify` is running (container logs): `docker logs openbsd-kvm`
-  - Ensure Docker port mapping is correct and the host firewall allows the port.
-  - From the host: `curl -I http://localhost:6080/vnc.html` should return a 200.
-  - Inside container: check `ss -lntp` or `ps aux | grep websockify` and confirm `websockify` bound to the mapped listen address.
+  - Check container logs: `docker logs -f openbsd-kvm`
+  - From host: `curl -I http://localhost:6080/vnc.html` should return 200.
+  - Inside container: check `ps aux | grep websockify` and `ss -lntp`.
+- UEFI not activated:
+  - Ensure OVMF/EDK2 firmware files exist in the container or are mounted. If not, entrypoint falls back to legacy BIOS.
+  - To add OVMF into the image, install the appropriate package (example for Debian-based images: `apt-get install -y ovmf` — package names differ by distro).
 - QEMU cannot open `/dev/kvm`:
-  - Ensure host has `/dev/kvm` and you passed `--device /dev/kvm:/dev/kvm`.
-  - If container can’t access `/dev/kvm` due to permissions, run with appropriate user or adjust host device permissions.
-- If you want to avoid loosening seccomp, supply a custom seccomp profile that allows the required KVM ioctls.
-- Disk/image persistence:
-  - VM artifacts are kept in `./images` on the host. Do not delete `disk.qcow2` if you want to preserve the installed system.
+  - Ensure host has `/dev/kvm` and the container is run with `--device /dev/kvm:/dev/kvm`.
+  - Adjust host device permissions or run with appropriate privileges.
+- SSH not reachable:
+  - If you chose not to expose SSH in `run_in_docker_helper.sh`, there will be no host port mapping for SSH. Re-run helper and enable SSH exposure or `docker run -p 2222:2222`.
 
 ---
 
 ## Security notes
-- The raw VNC connection is usually unauthenticated and unencrypted — exposing it to untrusted networks is not recommended.
-- noVNC over plain HTTP is unencrypted; proxy behind HTTPS if exposing to untrusted networks.
-- The compose example uses `seccomp:unconfined` to allow KVM ioctls; you may prefer a custom seccomp profile instead.
+- Raw VNC is typically unauthenticated/encrypted — avoid exposing it to untrusted networks.
+- noVNC over HTTP is unencrypted; proxy behind HTTPS when exposing remotely.
+- Using `seccomp:unconfined` loosens container constraints to allow KVM ioctls; prefer creating a tailored seccomp profile for production.
 
 ---
 
-## Logs & debugging
-- Container logs: `docker logs -f openbsd-kvm`
-- Compose logs: `docker compose logs -f openbsd-kvm`
-- Inside the container (if you need a shell): `docker exec -it openbsd-kvm /bin/sh`
+## Next steps / tips
+- If you want persistent UEFI variable storage across restarts, mount a host file for the OVMF vars file (the entrypoint creates `/tmp/OVMF_VARS.fd` by default; mount your persistent file and adjust permissions).
+- If you'd like, add `edk2-ovmf` / `ovmf` to the Dockerfile and pin a package name for the base image you use so `FIRMWARE=uefi` works out-of-the-box.
 
 ---
-
-## Image tags
-- The examples use `openbsd_docker_amd64:latest` as the build tag. If you previously built with a different name (e.g. `openbsd-kvm:latest`) use that tag consistently.
-
----
-
