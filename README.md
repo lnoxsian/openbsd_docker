@@ -1,5 +1,7 @@
 # openbsd_docker_amd64 — OpenBSD in Docker with KVM, noVNC, and firmware selection
 
+![./.github/screen_cap_openbsd_docker_amd64.png]
+
 A Docker image + helper scripts to run an OpenBSD VM using QEMU inside a container. Features:
 - VM artifacts stored under `./images` on the host (ISO and `*.qcow2` disk).
 - Two boot modes:
