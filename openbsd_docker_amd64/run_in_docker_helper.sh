@@ -91,7 +91,7 @@ fi
 prompt FIRMWARE "$DEFAULT_FIRMWARE" "Firmware (legacy|uefi) - default legacy BIOS"
 
 # Ask whether to expose SSH
-prompt expose_ssh "yes" "Expose guest SSH port to Docker host? (yes|no)"
+prompt expose_ssh "no" "Expose guest SSH port to Docker host? (yes|no)"
 if [ "${expose_ssh,,}" = "yes" ] || [ "${expose_ssh,,}" = "y" ]; then
   prompt HOST_SSH_PORT "$DEFAULT_HOST_SSH_PORT" "Host port forwarded to guest SSH (guest:22)"
 else
