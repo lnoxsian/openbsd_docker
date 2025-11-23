@@ -3,11 +3,10 @@ FROM alpine:latest
 # Install qemu, downloader and a small init to handle signals, plus python/git and
 # the distribution websockify package (pin to the requested package/version).
 RUN apk add --no-cache \
-    qemu qemu-img qemu-system-x86_64 \
+    qemu-img qemu-system-x86_64 \
     bash curl ca-certificates \
     dumb-init \
     git \
-    python3 \
     websockify \
   && update-ca-certificates \
   && rm -rf /var/cache/apk/*
@@ -15,6 +14,12 @@ RUN apk add --no-cache \
 # Clone noVNC into the image so the web UI is available 
 RUN git clone --depth=1 https://github.com/novnc/noVNC.git /opt/noVNC \ 
   || (echo "Failed to clone noVNC" && exit 1)
+
+# Cleanup of git repo
+RUN rm -rf /opt/noVNC/.git* || true
+
+# Remove git from the container
+RUN apk del git
 
 # Add entrypoint
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
